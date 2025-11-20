@@ -1,0 +1,1 @@
+Este arquivo foi criado para testar o push para o repositório GitHub. Se você está lendo isso, o push foi bem-sucedido.
