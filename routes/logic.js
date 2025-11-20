@@ -2,10 +2,10 @@ const express = require('express');
 const fs = require('fs');
 const router = express.Router();
 const db = require('../services/db');
-const { GoogleGenAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Inicializa o cliente Gemini
-const ai = new GoogleGenAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Rota para listar os arquivos de lógica de um cliente
 router.get('/', (req, res) => {
@@ -75,10 +75,8 @@ TXT: [Aqui vai o texto da base de conhecimento]
 Certifique-se de que o JSON seja válido e o TXT seja claro.`;
 
     try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const response = await model.generateContent(prompt);
         
         const text = response.text.trim();
         
