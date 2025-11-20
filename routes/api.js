@@ -19,10 +19,8 @@ function authenticate(req, res, next) {
 
 // Rotas públicas
 router.use('/auth', authRoutes);
-router.use('/stripe', stripeRoutes);
-
-// Rotas protegidas (requerem autenticação)
 router.use(authenticate); 
+router.use('/stripe', stripeRoutes);
 
 // Rotas de Sessão (WhatsApp)
 router.use('/sessions', sessionRoutes);
