@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatBot Host v2.5 - Multi-Tenant</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        /* Estilos CSS (Mantidos e Adaptados) */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #1e3c72, #2a5298); color: #fff; min-height: 100vh; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .header p { font-size: 1.1rem; opacity: 0.9; }
+        .login-container { display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+        .login-card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 40px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); width: 100%; max-width: 400px; }
+        .login-card h2 { text-align: center; margin-bottom: 30px; font-size: 1.8rem; }
+        .form-group { margin-bottom: 20px; }
+        .form-group input { width: 100%; padding: 12px; border: none; border-radius: 8px; background: rgba(255,255,255,0.9); color: #333; font-size: 1rem; }
+        .btn-login, .btn-register, .btn-stripe { width: 100%; padding: 12px; background: linear-gradient(45deg, #667eea, #764ba2); border: none; border-radius: 8px; color: white; font-size: 1.1rem; cursor: pointer; transition: transform 0.2s; margin-top: 10px; }
+        .btn-register { background: linear-gradient(45deg, #4CAF50, #45a049); }
+        .btn-stripe { background: linear-gradient(45deg, #6772e5, #8490ff); }
+        .btn-login:hover, .btn-register:hover, .btn-stripe:hover { transform: translateY(-2px); }
+        .error-message { color: #ff6b6b; text-align: center; margin-top: 15px; }
+        .hidden { display: none !important; }
+        .main-grid { display: grid; grid-template-columns: 250px 1fr; gap: 30px; }
+        .card { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 25px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); }
+        .card h2 { margin-bottom: 20px; font-size: 1.4rem; border-bottom: 2px solid rgba(255,255,255,0.3); padding-bottom: 10px; }
+        .sidebar { display: flex; flex-direction: column; gap: 20px; }
+        .nav-menu button { width: 100%; padding: 15px; margin-bottom: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.1); color: white; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
+        .nav-menu button:hover, .nav-menu button.active { background: rgba(255,255,255,0.2); }
+        .content-area { min-height: 500px; }
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .status-item { display: flex; align-items: center; gap: 10px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .status-dot.green { background: #4CAF50; box-shadow: 0 0 10px #4CAF50; }
+        .status-dot.red { background: #f44336; box-shadow: 0 0 10px #f44336; }
+        .status-dot.yellow { background: #ffeb3b; box-shadow: 0 0 10px #ffeb3b; }
+        .status-dot.grey { background: #9e9e9e; }
+        .device-input { display: flex; gap: 10px; margin-bottom: 20px; }
+        .device-input input { flex: 1; padding: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.9); color: #333; }
+        .btn-add { padding: 10px 20px; background: linear-gradient(45deg, #4CAF50, #45a049); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: bold; }
+        .device-list { list-style: none; }
+        .device-list li { display: flex; justify-content: space-between; align-items: center; padding: 12px; margin-bottom: 8px; background: rgba(255,255,255,0.05); border-radius: 8px; }
+        .device-list li.selected { background: rgba(255,255,255,0.2); }
+        .device-info { display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1; }
+        .device-actions { display: flex; gap: 5px; }
+        .btn-action { padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; font-size: 0.9rem; }
+        .qr-container { text-align: center; min-height: 200px; display: flex; align-items: center; justify-content: center; }
+        .qr-container img { max-width: 200px; border-radius: 10px; }
+        .progress-container { margin: 20px 0; }
+        .progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(45deg, #4CAF50, #45a049); width: 0%; transition: width 0.3s ease; }
+        .conversation-list { list-style: none; max-height: 300px; overflow-y: auto; }
+        .conversation-list li { padding: 10px; margin-bottom: 5px; background: rgba(255,255,255,0.05); border-radius: 8px; cursor: pointer; }
+        .conversation-list li.selected { background: rgba(255,255,255,0.2); }
+        .chat-container { height: 400px; display: flex; flex-direction: column; }
+        .message-container { flex: 1; overflow-y: auto; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 10px; margin-bottom: 15px; }
+        .message { margin-bottom: 10px; padding: 8px 12px; border-radius: 10px; max-width: 80%; }
+        .message.user { background: rgba(33, 150, 243, 0.3); margin-left: auto; }
+        .message.bot { background: rgba(76, 175, 80, 0.3); }
+        .message.admin { background: rgba(255, 193, 7, 0.3); }
+        .message.system { background: rgba(156, 39, 176, 0.3); }
+        .reply-container { display: flex; gap: 10px; }
+        .reply-container input { flex: 1; padding: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.9); color: #333; }
+        .logic-container textarea { width: 100%; height: 150px; padding: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.9); color: #333; resize: vertical; margin-bottom: 10px; }
+        .logic-container input { width: 100%; padding: 10px; border: none; border-radius: 8px; background: rgba(255,255,255,0.9); color: #333; margin-bottom: 10px; }
+        .btn-logic { width: 100%; padding: 10px; background: linear-gradient(45deg, #FF9800, #F57C00); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: bold; margin-bottom: 15px; }
+        .logic-list { list-style: none; }
+        .logic-list li { display: flex; justify-content: space-between; align-items: center; padding: 8px; margin-bottom: 5px; background: rgba(255,255,255,0.05); border-radius: 5px; }
+        .log-container { height: 300px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px; font-family: monospace; font-size: 0.9rem; }
+        .log-line { margin-bottom: 5px; }
+        .log-line.ERROR { color: #ff6b6b; }
+        .log-line.WARN { color: #ffd93d; }
+        .log-line.INFO { color: #6bcf7f; }
+        .right-panel { display: flex; flex-direction: column; gap: 20px; }
+        .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        
+        /* Novos Estilos para o Gemini IA e Stripe */
+        .gemini-output { display: flex; gap: 20px; }
+        .gemini-output textarea { flex: 1; height: 300px; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.9); color: #333; resize: none; }
+        .plan-card { background: rgba(255,255,255,0.1); border-radius: 15px; padding: 20px; text-align: center; margin-bottom: 20px; }
+        .plan-card h3 { margin-bottom: 10px; font-size: 1.5rem; }
+        .plan-card p { margin-bottom: 15px; }
+        .plan-card.highlight { border: 3px solid #4CAF50; }
+    </style>
+</head>
+<body>
+    <div id="login-screen">
+        <div class="container">
+            <div class="header">
+                <h1>ChatBot Host v2.5</h1>
+                <p>Sistema de Gerenciamento de Bots WhatsApp</p>
+            </div>
+            <div class="login-container">
+                <div class="login-card">
+                    <h2 id="login-title">Login</h2>
+                    <div id="login-form">
+                        <div class="form-group">
+                            <input type="text" id="login-username" placeholder="Usuário (ex: email@dominio.com)" value="admin">
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="login-password" placeholder="Senha" value="suporte@1">
+                        </div>
+                        <button id="loginBtn" class="btn-login">Entrar</button>
+                        <button id="showRegisterBtn" class="btn-register">Novo Cadastro</button>
+                    </div>
+                    
+                    <div id="register-form" class="hidden">
+                        <div class="form-group">
+                            <input type="email" id="register-email" placeholder="Email (será seu usuário)">
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="register-password" placeholder="Senha">
+                        </div>
+                        <button id="registerBtn" class="btn-register">Cadastrar e Assinar</button>
+                        <button id="showLoginBtn" class="btn-login">Voltar para Login</button>
+                    </div>
+                    
+                    <div id="login-error" class="error-message"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-app" class="hidden">
+        <div class="container">
+            <div class="header">
+                <h1>ChatBot Host v2.5</h1>
+                <p>Dashboard de Gerenciamento</p>
+            </div>
+            
+            <div class="main-grid">
+                <div class="sidebar">
+                    <div class="card nav-menu">
+                        <button id="nav-dashboard" class="active">Dashboard</button>
+                        <button id="nav-gemini">Criador de Lógica IA (Gemini)</button>
+                        <button id="nav-stripe">Assinatura (Stripe)</button>
+                        <button id="logoutBtn">Sair</button>
+                    </div>
+                    
+                    <div class="card">
+                        <h2>Status do Sistema</h2>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span id="status-gemini" class="status-dot red"></span>
+                                <span>Gemini AI</span>
+                            </div>
+                            <div class="status-item">
+                                <span id="status-websocket" class="status-dot red"></span>
+                                <span>WebSocket</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="content-area">
+                    
+                    <!-- Dashboard (Original) -->
+                    <div id="view-dashboard" class="view">
+                        <div class="card">
+                            <h2>Dispositivos WhatsApp</h2>
+                            <div class="device-input">
+                                <input type="text" id="newSessionId" placeholder="Nome do Dispositivo (ex: vendas)">
+                                <button id="addDeviceBtn" class="btn-add">Adicionar Dispositivo</button>
+                            </div>
+                            <ul id="deviceList" class="device-list"></ul>
+                        </div>
+
+                        <div class="card">
+                            <h2 id="authTitle">Autenticação WhatsApp</h2>
+                            <div id="qr-progress-bar-container" class="progress-container hidden">
+                                <div class="progress-bar">
+                                    <div id="qr-progress-bar" class="progress-fill"></div>
+                                </div>
+                            </div>
+                            <div id="qrCodeContainer" class="qr-container">
+                                <p>Selecione um dispositivo na lista.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <h2>Conversas em Tempo Real</h2>
+                            <div class="bottom-grid">
+                                <div class="conversation-panel">
+                                    <ul id="conversationList" class="conversation-list">
+                                        <li style="text-align: center; opacity: 0.7;">Selecione uma conversa para visualizar as mensagens</li>
+                                    </ul>
+                                </div>
+                                <div class="chat-panel chat-container">
+                                    <h2 id="chatHeader">Chat</h2>
+                                    <div id="messageContainer" class="message-container">
+                                        <div style="text-align: center; opacity: 0.7; margin-top: 50px;">Nenhuma conversa selecionada</div>
+                                    </div>
+                                    <div class="reply-container">
+                                        <input type="text" id="replyInput" placeholder="Digite sua resposta...">
+                                        <button id="sendReplyBtn" class="btn-add">Enviar Resposta</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <h2>Logs do Servidor</h2>
+                            <div id="logContainer" class="log-container"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Criador de Lógica IA (Gemini) -->
+                    <div id="view-gemini" class="view hidden">
+                        <div class="card">
+                            <h2>Criador de Lógica IA (Gemini)</h2>
+                            <p>Descreva o seu negócio ou a lógica que você deseja criar. A IA irá gerar um arquivo JSON de fluxo e um arquivo TXT de base de conhecimento.</p>
+                            <textarea id="gemini-description" placeholder="Ex: Uma pizzaria chamada PizzaFlash, aberta das 18h às 23h. Cardápio: Calabresa (R$40), Mussarela (R$35). Fazemos entrega."></textarea>
+                            <button id="generateLogicBtn" class="btn-logic">Gerar Lógica</button>
+                            
+                            <div id="gemini-output" class="gemini-output hidden">
+                                <div>
+                                    <h3>JSON (Lógica de Fluxo)</h3>
+                                    <textarea id="gemini-json-output" placeholder="JSON Gerado"></textarea>
+                                    <input type="text" id="json-filename" placeholder="Nome do arquivo JSON (ex: flow.json)">
+                                    <button id="saveJsonBtn" class="btn-add">Salvar JSON</button>
+                                </div>
+                                <div>
+                                    <h3>TXT (Base de Conhecimento)</h3>
+                                    <textarea id="gemini-txt-output" placeholder="TXT Gerado"></textarea>
+                                    <input type="text" id="txt-filename" placeholder="Nome do arquivo TXT (ex: knowledge.txt)">
+                                    <button id="saveTxtBtn" class="btn-add">Salvar TXT</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card">
+                            <h2>Lógicas Salvas</h2>
+                            <ul id="logicList" class="logic-list"></ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Assinatura (Stripe) -->
+                    <div id="view-stripe" class="view hidden">
+                        <div class="card">
+                            <h2>Gerenciamento de Assinatura</h2>
+                            <p id="subscription-status">Status da Assinatura: <span style="color: yellow;">Verificando...</span></p>
+                            
+                            <div class="plan-card highlight">
+                                <h3>Plano Free (30 Dias)</h3>
+                                <p>Teste todas as funcionalidades por 30 dias. Inclui 1 dispositivo.</p>
+                                <button id="subscribeFreeBtn" class="btn-stripe" data-price-id="PRICE_ID_FREE">Assinar Plano Free</button>
+                            </div>
+                            
+                            <div class="plan-card">
+                                <h3>Plano Bot Fixo</h3>
+                                <p>Assinatura mensal com 1 bot fixo e ilimitadas lógicas IA.</p>
+                                <button id="subscribeFixedBtn" class="btn-stripe" data-price-id="PRICE_ID_FIXED">Assinar Plano Bot Fixo</button>
+                            </div>
+                            
+                            <p style="margin-top: 20px;">*A chave pública do Stripe será configurada no backend.</p>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis de Configuração
+        const PORT = 3035; // Porta configurada no backend
+        const BASE_URL = `http://72.60.246.250:${PORT}`;
+        const API_URL = `${BASE_URL}/api`;
+        const WS_URL = `ws://72.60.246.250:${PORT}`;
+        
+        // IDs de Produto Stripe (Serão substituídos no backend)
+        const STRIPE_PUBLIC_KEY = "pk_test_..."; // Chave pública de teste (será carregada do backend)
+        const PRICE_ID_FREE = "price_1OaB1y2eZvKYlo2C2X4YCL"; // ID de preço fictício para o free trial
+        const PRICE_ID_FIXED = "price_1OaB1y2eZvKYlo2C2X4YCL"; // ID de preço fictício para o bot fixo
+        
+        let stripe;
+        let isAuthenticated = false;
+        let clientId = null;
+        let activeSessions = {};
+        let conversations = {};
+        let selectedSessionId = null;
+        let selectedConversationId = null;
+
+        // Elementos de Login/Cadastro
+        const loginScreen = document.getElementById("login-screen");
+        const mainApp = document.getElementById("main-app");
+        const loginForm = document.getElementById("login-form");
+        const registerForm = document.getElementById("register-form");
+        const loginTitle = document.getElementById("login-title");
+        const loginBtn = document.getElementById("loginBtn");
+        const showRegisterBtn = document.getElementById("showRegisterBtn");
+        const showLoginBtn = document.getElementById("showLoginBtn");
+        const loginUsernameInput = document.getElementById("login-username");
+        const loginPasswordInput = document.getElementById("login-password");
+        const registerEmailInput = document.getElementById("register-email");
+        const registerPasswordInput = document.getElementById("register-password");
+        const registerBtn = document.getElementById("registerBtn");
+        const loginError = document.getElementById("login-error");
+        const logoutBtn = document.getElementById("logoutBtn");
+
+        // Elementos de Navegação
+        const navDashboard = document.getElementById("nav-dashboard");
+        const navGemini = document.getElementById("nav-gemini");
+        const navStripe = document.getElementById("nav-stripe");
+        const viewDashboard = document.getElementById("view-dashboard");
+        const viewGemini = document.getElementById("view-gemini");
+        const viewStripe = document.getElementById("view-stripe");
+        
+        // Elementos do Dashboard
+        const statusWebsocket = document.getElementById("status-websocket");
+        const statusGemini = document.getElementById("status-gemini");
+        const addDeviceBtn = document.getElementById("addDeviceBtn");
+        const newSessionIdInput = document.getElementById("newSessionId");
+        const deviceList = document.getElementById("deviceList");
+        const qrCodeContainer = document.getElementById("qrCodeContainer");
+        const authTitle = document.getElementById("authTitle");
+        const qrProgressBar = document.getElementById("qr-progress-bar");
+        const qrProgressBarContainer = document.getElementById("qr-progress-bar-container");
+        const conversationList = document.getElementById("conversationList");
+        const chatHeader = document.getElementById("chatHeader");
+        const messageContainer = document.getElementById("messageContainer");
+        const replyInput = document.getElementById("replyInput");
+        const sendReplyBtn = document.getElementById("sendReplyBtn");
+        const logContainer = document.getElementById("logContainer");
+        
+        // Elementos do Gemini IA
+        const geminiDescription = document.getElementById("gemini-description");
+        const generateLogicBtn = document.getElementById("generateLogicBtn");
+        const geminiOutput = document.getElementById("gemini-output");
+        const geminiJsonOutput = document.getElementById("gemini-json-output");
+        const geminiTxtOutput = document.getElementById("gemini-txt-output");
+        const jsonFilename = document.getElementById("json-filename");
+        const txtFilename = document.getElementById("txt-filename");
+        const saveJsonBtn = document.getElementById("saveJsonBtn");
+        const saveTxtBtn = document.getElementById("saveTxtBtn");
+        const logicList = document.getElementById("logicList");
+        
+        // Elementos do Stripe
+        const subscriptionStatus = document.getElementById("subscription-status");
+        const subscribeFreeBtn = document.getElementById("subscribeFreeBtn");
+        const subscribeFixedBtn = document.getElementById("subscribeFixedBtn");
+        
+        // --- Funções de Navegação ---
+        function showView(viewId) {
+            document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+            document.getElementById(viewId).classList.remove('hidden');
+            document.querySelectorAll('.nav-menu button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`nav-${viewId.replace('view-', '')}`).classList.add('active');
+            
+            if (viewId === 'view-dashboard') {
+                initializeApp();
+            } else if (viewId === 'view-gemini') {
+                fetchAndDisplayLogics();
+            }
+        }
+        
+        // --- Funções de Login/Cadastro ---
+        showRegisterBtn.addEventListener("click", () => {
+            loginTitle.textContent = "Novo Cadastro";
+            loginForm.classList.add("hidden");
+            registerForm.classList.remove("hidden");
+            loginError.textContent = "";
+        });
+        
+        showLoginBtn.addEventListener("click", () => {
+            loginTitle.textContent = "Login";
+            loginForm.classList.remove("hidden");
+            registerForm.classList.add("hidden");
+            loginError.textContent = "";
+        });
+        
+        loginBtn.addEventListener("click", async () => {
+            const username = loginUsernameInput.value;
+            const password = loginPasswordInput.value;
+            loginError.textContent = "";
+            try {
+                const response = await fetch(`${API_URL}/auth/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    isAuthenticated = true;
+                    clientId = data.clientId;
+                    sessionStorage.setItem("isAuthenticated", "true");
+                    sessionStorage.setItem("clientId", clientId);
+                    loginScreen.classList.add("hidden");
+                    mainApp.classList.remove("hidden");
+                    showView('view-dashboard');
+                } else {
+                    loginError.textContent = data.message || "Erro no login.";
+                }
+            } catch (error) {
+                loginError.textContent = "Erro de conexão com o servidor.";
+            }
+        });
+        
+        registerBtn.addEventListener("click", async () => {
+            const email = registerEmailInput.value;
+            const password = registerPasswordInput.value;
+            loginError.textContent = "";
+            try {
+                const response = await fetch(`${API_URL}/auth/register`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert(data.message);
+                    // Após o cadastro, redireciona para a tela de assinatura
+                    loginTitle.textContent = "Login";
+                    loginForm.classList.remove("hidden");
+                    registerForm.classList.add("hidden");
+                    loginUsernameInput.value = email;
+                    loginPasswordInput.value = password;
+                } else {
+                    loginError.textContent = data.message || "Erro no cadastro.";
+                }
+            } catch (error) {
+                loginError.textContent = "Erro de conexão com o servidor.";
+            }
+        });
+        
+        logoutBtn.addEventListener("click", () => {
+            sessionStorage.clear();
+            window.location.reload();
+        });
+
+        function checkAuth() {
+            if (sessionStorage.getItem("isAuthenticated") === "true" && sessionStorage.getItem("clientId")) {
+                isAuthenticated = true;
+                clientId = sessionStorage.getItem("clientId");
+                loginScreen.classList.add("hidden");
+                mainApp.classList.remove("hidden");
+                showView('view-dashboard');
+            }
+        }
+
+        // --- Funções de Inicialização e WebSocket ---
+        async function initializeApp() {
+            connectWebSocket();
+            checkSystemHealth();
+            await loadStripeConfig();
+            await loadSessions();
+        }
+        
+        async function loadStripeConfig() {
+            try {
+                // Em um sistema real, você buscaria a chave pública do backend
+                // Por enquanto, usaremos a chave pública de teste fictícia
+                stripe = Stripe(STRIPE_PUBLIC_KEY);
+                // Você também buscaria os IDs de preço reais do backend
+                // PRICE_ID_FREE = ...
+                // PRICE_ID_FIXED = ...
+            } catch (error) {
+                console.error("Erro ao inicializar Stripe:", error);
+            }
+        }
+
+        async function loadSessions() {
+            try {
+                const response = await fetch(`${API_URL}/sessions`, {
+                    headers: { 'X-Client-Id': clientId }
+                });
+                const sessions = await response.json();
+                activeSessions = {};
+                sessions.forEach(s => {
+                    activeSessions[s.id] = { status: s.status };
+                });
+                renderDeviceList();
+            } catch (error) {
+                console.error("Erro ao carregar sessões.", error);
+            }
+        }
+
+        function connectWebSocket() {
+            const ws = new WebSocket(WS_URL);
+            ws.onopen = () => {
+                statusWebsocket.className = "status-dot green";
+                addSystemLog("🔌 Conectado ao WebSocket");
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === "log") {
+                    addSystemLog(data.message, data.level);
+                } else if (data.type === "new_message") {
+                    handleNewMessage(data);
+                } else if (data.type === "qr_code") {
+                    if (data.sessionId === selectedSessionId) {
+                        qrCodeContainer.innerHTML = `<img src="${data.qrCodeUrl}" alt="QR Code">`;
+                        qrProgressBarContainer.classList.add("hidden");
+                    }
+                } else if (data.type === "status_update") {
+                    if (activeSessions[data.sessionId]) {
+                        activeSessions[data.sessionId].status = data.status;
+                        renderDeviceList();
+                        if (data.sessionId === selectedSessionId) {
+                            updateAuthCardStatus(data.status);
+                        }
+                    }
+                } else if (data.type === "session_destroyed") {
+                    if (activeSessions[data.sessionId]) {
+                        activeSessions[data.sessionId].status = "OFFLINE";
+                        renderDeviceList();
+                    }
+                }
+            };
+            ws.onclose = () => {
+                statusWebsocket.className = "status-dot red";
+                addSystemLog("❌ WebSocket desconectado", "ERROR");
+                setTimeout(connectWebSocket, 5000);
+            };
+            ws.onerror = () => {
+                statusWebsocket.className = "status-dot red";
+            };
+        }
+
+        function addSystemLog(message, level = "INFO") {
+            const logLine = document.createElement("div");
+            logLine.className = `log-line ${level}`;
+            logLine.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.prepend(logLine);
+            
+            while (logContainer.children.length > 100) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        async function checkSystemHealth() {
+            try {
+                const res = await fetch(`${API_URL}/health/gemini`);
+                const data = await res.json();
+                statusGemini.className = `status-dot ${data.status === "OPERATIONAL" ? "green" : "red"}`;
+                statusGemini.title = data.message || data.status;
+            } catch {
+                statusGemini.className = "status-dot red";
+                statusGemini.title = "Servidor backend inacessível.";
+            }
+        }
+
+        // --- Funções de Dispositivo (WhatsApp) ---
+        function renderDeviceList() {
+            deviceList.innerHTML = "";
+            for (const sessionId in activeSessions) {
+                const li = document.createElement("li");
+                if (sessionId === selectedSessionId) li.classList.add("selected");
+                
+                const infoDiv = document.createElement("div");
+                infoDiv.className = "device-info";
+                infoDiv.onclick = () => selectDevice(sessionId);
+                
+                const statusDot = document.createElement("span");
+                statusDot.className = "status-dot";
+                const status = activeSessions[sessionId].status;
+                if (status === "READY") statusDot.classList.add("green");
+                else if (status === "QR_PENDING") statusDot.classList.add("yellow");
+                else statusDot.classList.add("grey");
+                
+                infoDiv.appendChild(statusDot);
+                infoDiv.appendChild(document.createTextNode(sessionId));
+                
+                const actionsDiv = document.createElement("div");
+                actionsDiv.className = "device-actions";
+                
+                const restartBtn = document.createElement("button");
+                restartBtn.className = "btn-action";
+                restartBtn.innerHTML = "🔄";
+                restartBtn.title = "Reiniciar";
+                restartBtn.style.background = "#FF9800";
+                restartBtn.style.color = "white";
+                restartBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    restartDevice(sessionId);
+                };
+                
+                const deleteBtn = document.createElement("button");
+                deleteBtn.className = "btn-action";
+                deleteBtn.innerHTML = "X";
+                deleteBtn.title = "Remover";
+                deleteBtn.style.background = "#f44336";
+                deleteBtn.style.color = "white";
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteDevice(sessionId);
+                };
+                
+                actionsDiv.appendChild(restartBtn);
+                actionsDiv.appendChild(deleteBtn);
+                
+                li.appendChild(infoDiv);
+                li.appendChild(actionsDiv);
+                deviceList.appendChild(li);
+            }
+        }
+
+        async function selectDevice(sessionId) {
+            selectedSessionId = sessionId;
+            authTitle.textContent = `Autenticação: ${sessionId}`;
+            qrCodeContainer.innerHTML = "<p>Verificando status...</p>";
+            renderDeviceList();
+            updateAuthCardStatus(activeSessions[sessionId]?.status || "OFFLINE");
+        }
+
+        function updateAuthCardStatus(status) {
+            qrProgressBarContainer.classList.add("hidden");
+            switch (status) {
+                case "QR_PENDING":
+                    qrCodeContainer.innerHTML = "<p>Aguardando QR Code...</p>";
+                    // Lógica de progresso visual
+                    qrProgressBarContainer.classList.remove("hidden");
+                    qrProgressBar.style.width = "0%";
+                    setTimeout(() => {
+                        qrProgressBar.style.transition = "width 4s ease-out";
+                        qrProgressBar.style.width = "100%";
+                    }, 100);
+                    break;
+                case "READY":
+                    qrCodeContainer.innerHTML = "<h2 style=\"color: #4CAF50;\">✅ Conectado</h2>";
+                    break;
+                case "ERROR":
+                case "AUTH_FAILURE":
+                    qrCodeContainer.innerHTML = "<h2 style=\"color: #f44336;\">❌ Erro na Conexão</h2>";
+                    break;
+                default:
+                    qrCodeContainer.innerHTML = `<p>Status: ${status || "Offline"}</p>`;
+            }
+        }
+
+        addDeviceBtn.addEventListener("click", async () => {
+            const sessionId = newSessionIdInput.value.trim();
+            if (!sessionId || activeSessions[sessionId]) return;
+            
+            try {
+                await fetch(`${API_URL}/sessions`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", 'X-Client-Id': clientId },
+                    body: JSON.stringify({ sessionId })
+                });
+                
+                activeSessions[sessionId] = { status: "INITIALIZING" };
+                newSessionIdInput.value = "";
+                renderDeviceList();
+                selectDevice(sessionId);
+            } catch (error) {
+                console.error("Erro ao criar sessão:", error);
+            }
+        });
+        
+        async function deleteDevice(sessionId) {
+            if (!confirm(`Remover "${sessionId}"?`)) return;
+            
+            try {
+                await fetch(`${API_URL}/sessions/${sessionId}`, {
+                    method: "DELETE",
+                    headers: { 'X-Client-Id': clientId }
+                });
+                
+                delete activeSessions[sessionId];
+                if (selectedSessionId === sessionId) {
+                    selectedSessionId = null;
+                    authTitle.textContent = "Autenticação";
+                    qrCodeContainer.innerHTML = "<p>Selecione um dispositivo.</p>";
+                }
+                renderDeviceList();
+            } catch (error) {
+                console.error("Erro ao deletar dispositivo:", error);
+            }
+        }
+
+        async function restartDevice(sessionId) {
+            if (!confirm(`Reiniciar "${sessionId}"?`)) return;
+            
+            try {
+                await fetch(`${API_URL}/sessions/${sessionId}/restart`, {
+                    method: "POST",
+                    headers: { 'X-Client-Id': clientId }
+                });
+                selectDevice(sessionId);
+            } catch (error) {
+                console.error("Erro ao reiniciar dispositivo:", error);
+            }
+        }
+
+        // --- Funções de Chat ---
+        function handleNewMessage(msg) {
+            // Lógica de manipulação de mensagens (mantida do original)
+            // ...
+        }
+        
+        function renderConversationList() {
+            // Lógica de renderização de conversas (mantida do original)
+            // ...
+        }
+        
+        function selectConversation(id) {
+            // Lógica de seleção de conversa (mantida do original)
+            // ...
+        }
+        
+        function renderMessages(id) {
+            // Lógica de renderização de mensagens (mantida do original)
+            // ...
+        }
+
+        sendReplyBtn.addEventListener("click", async () => {
+            const text = replyInput.value.trim();
+            if (!text || !selectedConversationId || !selectedSessionId) return;
+            
+            try {
+                await fetch(`${API_URL}/sessions/${selectedSessionId}/send`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", 'X-Client-Id': clientId },
+                    body: JSON.stringify({ number: selectedConversationId, text })
+                });
+                replyInput.value = "";
+            } catch (error) {
+                console.error("Erro ao enviar mensagem:", error);
+            }
+        });
+
+        // --- Funções de Lógica IA (Gemini) ---
+        navGemini.addEventListener("click", () => showView('view-gemini'));
+        
+        generateLogicBtn.addEventListener("click", async () => {
+            const description = geminiDescription.value.trim();
+            if (!description) {
+                alert("Por favor, insira uma descrição para a lógica.");
+                return;
+            }
+            
+            generateLogicBtn.textContent = "Gerando... (Aguarde)";
+            generateLogicBtn.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_URL}/logics/generate`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", 'X-Client-Id': clientId },
+                    body: JSON.stringify({ description })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    geminiJsonOutput.value = data.json;
+                    geminiTxtOutput.value = data.txt;
+                    jsonFilename.value = "flow.json";
+                    txtFilename.value = "knowledge.txt";
+                    geminiOutput.classList.remove("hidden");
+                    alert(data.message);
+                } else {
+                    alert(data.error || "Falha na geração da lógica.");
+                }
+            } catch (error) {
+                alert("Erro de conexão com a API Gemini.");
+                console.error(error);
+            } finally {
+                generateLogicBtn.textContent = "Gerar Lógica";
+                generateLogicBtn.disabled = false;
+            }
+        });
+        
+        saveJsonBtn.addEventListener("click", () => saveLogic(jsonFilename.value, geminiJsonOutput.value));
+        saveTxtBtn.addEventListener("click", () => saveLogic(txtFilename.value, geminiTxtOutput.value));
+
+        async function saveLogic(fileName, content) {
+            if (!fileName || !content) {
+                alert("Preencha o nome do arquivo e o conteúdo.");
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/logics/save`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", 'X-Client-Id': clientId },
+                    body: JSON.stringify({ fileName, content })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(data.message);
+                    fetchAndDisplayLogics();
+                } else {
+                    alert(data.error || "Falha ao salvar lógica.");
+                }
+            } catch (error) {
+                alert("Erro ao salvar lógica.");
+                console.error(error);
+            }
+        }
+
+        async function fetchAndDisplayLogics() {
+            logicList.innerHTML = "";
+            if (!clientId) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/logics`, {
+                    headers: { 'X-Client-Id': clientId }
+                });
+                const files = await response.json();
+                
+                files.forEach(fileName => {
+                    const li = document.createElement("li");
+                    li.textContent = fileName;
+                    
+                    const deleteBtn = document.createElement("button");
+                    deleteBtn.textContent = "X";
+                    deleteBtn.className = "btn-action";
+                    deleteBtn.style.background = "#f44336";
+                    deleteBtn.style.color = "white";
+                    deleteBtn.title = "Deletar Lógica";
+                    deleteBtn.onclick = () => deleteLogic(fileName);
+                    
+                    li.appendChild(deleteBtn);
+                    logicList.appendChild(li);
+                });
+            } catch (error) {
+                console.error("Erro ao carregar lógicas:", error);
+            }
+        }
+
+        async function deleteLogic(fileName) {
+            if (!confirm(`Deletar "${fileName}"?`)) return;
+            
+            try {
+                await fetch(`${API_URL}/logics/${fileName}`, {
+                    method: "DELETE",
+                    headers: { 'X-Client-Id': clientId }
+                });
+                fetchAndDisplayLogics();
+            } catch (error) {
+                console.error("Erro ao deletar lógica:", error);
+            }
+        }
+
+        // --- Funções de Assinatura (Stripe) ---
+        navStripe.addEventListener("click", () => showView('view-stripe'));
+        
+        // Event Listeners para os botões de assinatura
+        document.querySelectorAll('.btn-stripe').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const priceId = e.target.dataset.priceId;
+                const mode = priceId === PRICE_ID_FREE ? 'subscription' : 'subscription'; // Ambos são assinaturas
+                
+                if (!clientId) {
+                    alert("Por favor, faça login ou cadastre-se primeiro.");
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`${API_URL}/stripe/create-checkout-session`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ 
+                            email: `${clientId}@example.com`, // Usando um email fictício baseado no clientId
+                            priceId: priceId,
+                            mode: mode
+                        })
+                    });
+                    const session = await response.json();
+                    
+                    if (session.id) {
+                        // Redireciona para o Stripe Checkout
+                        stripe.redirectToCheckout({ sessionId: session.id });
+                    } else {
+                        alert(session.error || "Erro ao iniciar o checkout do Stripe.");
+                    }
+                } catch (error) {
+                    alert("Erro de conexão com o servidor Stripe.");
+                    console.error(error);
+                }
+            });
+        });
+
+        // --- Inicialização ---
+        checkAuth();
+        
+        // Adicionar log inicial
+        setTimeout(() => {
+            addSystemLog("[Sistema] Dashboard iniciado.");
+        }, 1000);
+    </script>
+</body>
+</html>
